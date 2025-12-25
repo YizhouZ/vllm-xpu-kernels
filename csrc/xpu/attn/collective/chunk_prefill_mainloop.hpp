@@ -123,6 +123,7 @@ struct FMHAFwdMainloop<
   using TileShapeQK = decltype(TiledMMAQK{}.tile_mnk());
   using TileShapePV = decltype(TiledMMAPV{}.tile_mnk());
   static constexpr int VTiles = VTiles_;
+  static constexpr int HeadSizeVO = VTiles * get<1>(TileShapePV{});
   using SubgroupLayoutQK = decltype(TiledMMAQK{}.get_atom_layout_mnk());
   using SGPerWG = decltype(product(
       take<1, 4>(shape(typename TiledMMAQK::ThrLayoutVMNK{}))));
@@ -177,6 +178,30 @@ struct FMHAFwdMainloop<
       expand_sg_fragment_t<SingleFragA, 1, VTiles>;  // (atom val,q',v',VV)
   using FragARow = decltype(reduce<1>(FragA{}, sycl::plus<void>{}));
   using ElementA = typename TiledMMAPV::ValTypeD;
+  using ElementQ = typename TiledMMAQK::ValTypeA;
+
+  // for preload smem copies
+  // frag level 1d array: (Q * d) / (SG * SG_size)
+  using FragPackQ = cutlass::AlignedArray<
+      ElementQ,
+      (get<0>(TileShapeQK{}) * get<2>(TileShapeQK{})) /
+          (SGPerWG{} * intel::sg_size)>;
+  using StoreTrait = Copy_Traits<XE_1D_STSM<
+      cutlass::uint128_t,
+      typename uint_bit<sizeof_bits_v<ElementQ>>::type>>;
+  using LoadTrait = Copy_Traits<XE_1D_LDSM<
+      typename uint_bit<sizeof_bits_v<ElementQ>>::type,
+      cutlass::uint128_t>>;
+  using TiledStoreQSmem = decltype(make_tiled_copy(
+      Copy_Atom<StoreTrait, ElementQ>{},
+      Layout<Shape<_16, _16>, Stride<_1, _16>>{},
+      Layout<Shape<_8, _2>, Stride<_1, _8>>{}));  // FIXME: use u128_t /
+                                                  // ElementQ
+  using TiledLoadQSmem = decltype(make_tiled_copy(
+      Copy_Atom<LoadTrait, ElementQ>{},
+      Layout<Shape<_16, _16>, Stride<_1, _16>>{},
+      Layout<Shape<_8, _2>, Stride<_1, _8>>{}));  // FIXME: use u128_t /
+                                                  // ElementQ
 
   static constexpr bool CausalMask = CausalMask_;
   static constexpr bool LocalMask = LocalMask_;
@@ -199,15 +224,22 @@ struct FMHAFwdMainloop<
   using Params = Arguments;
 
   // SLM data
-  struct SharedStorage {};
+  struct SharedStorage {
+    cute::array<ElementQ, get<0>(TileShapeQK{}) * HeadSizeVO> q_preload;
+  };
 
+ private:
+  SharedStorage& shared;
+
+ public:
   Params params;
 
   //
   // Methods
   //
 
-  FMHAFwdMainloop(Params const& params_, SharedStorage&) : params(params_) {}
+  FMHAFwdMainloop(Params const& params_, SharedStorage& shared_)
+      : params(params_), shared(shared_) {}
 
   static constexpr Params
   to_underlying_arguments(Arguments const& args, void* /* workspace */) {
@@ -325,6 +357,58 @@ struct FMHAFwdMainloop<
     auto pKgK = prefetch_k.get_slice(thr_id).partition_S(gK);
     auto pVgV = prefetch_v.get_slice(thr_id).partition_S(gV);
 
+    /* Create slm copies */
+    auto sg = compat::get_nd_item<1>().get_sub_group();
+    auto sg_id = sg.get_group_linear_id();
+
+    // 256, 4, 16
+    // Tensor sQ = make_tensor(make_smem_ptr<ElementQ>(&shared.q_preload),
+    // make_shape(Int<FragPackQ::kElements>{}, intel::_SGSize{}, SGPerWG{},
+    // Int<VTiles>{}));
+    Tensor sQ = make_tensor(
+        make_smem_ptr<ElementQ>(&shared.q_preload),
+        make_shape(
+            get<0>(TileShapeQK{}), get<2>(TileShapeQK{}), Int<VTiles>{}));
+    TiledStoreQSmem store_q_smem{};
+    TiledLoadQSmem load_q_smem{};
+    auto thr_store_q_smem = store_q_smem.get_slice(thr_id);
+    auto thr_load_q_smem = load_q_smem.get_slice(thr_id);
+    auto tQsQ_store = thr_store_q_smem.partition_D(sQ);
+    auto tQsQ_load = thr_load_q_smem.partition_S(sQ);
+
+    if (cute::thread(0, 0)) {
+      print("sQ: ");
+      print(sQ);
+      print("\n");
+      print("tQsQ_store: ");
+      print(tQsQ_store);
+      print("\n");
+      print("tQsQ_load: ");
+      print(tQsQ_load);
+      print("\n");
+      print("tQrQ: ");
+      print(tQrQ);
+      print("\n");
+      print("tSrQ: ");
+      print(tSrQ);
+      print("\n");
+      print("tQgQ: ");
+      print(tQgQ);
+      print("\n");
+      print("thr_store_q_smem: ");
+      print(thr_store_q_smem);
+      print("\n");
+      print("store_q_smem: ");
+      print(store_q_smem);
+      print("\n");
+      print("copy_q: ");
+      print(copy_q);
+      print("\n");
+      print("thr_copy_q: ");
+      print(thr_copy_q);
+      print("\n");
+    }
+
     // ------
     // Kernel
     // ------
@@ -375,6 +459,30 @@ struct FMHAFwdMainloop<
 
         reorder(tQrQ, tSrQ);
         reorder(tKrK, tSrK);
+
+        // /* reg -> smem */
+        auto store_tSrQ = thr_store_q_smem.retile_S(tSrQ);
+        copy(store_q_smem, store_tSrQ, tQsQ_store(_, _, _, D));
+        barrier();
+        if (cute::thread(0, 0)) {
+          print_tensor(tSrQ);
+          print_tensor(tQsQ_store(_, _, _, D));
+          print("store_tSrQ: ");
+          print(store_tSrQ);
+          print("\n");
+          print("tQsQ_store: ");
+          print(tQsQ_store);
+          print("\n");
+        }
+        /* smem -> reg */
+        // clear(tSrQ);
+        // auto load_tSrQ = thr_load_q_smem.retile_D(tSrQ);
+        // copy(load_q_smem, tQsQ_load(_, _, D), load_tSrQ);
+        // barrier();
+        // if (cute::thread(0, 0)) {
+        //   print_tensor(tSrQ);
+        // }
+
         cute::gemm(mma_qk, tSrQ, tSrK, tSrS);
       }
 

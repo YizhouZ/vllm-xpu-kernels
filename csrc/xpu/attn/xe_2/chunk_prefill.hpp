@@ -237,6 +237,9 @@ struct FMHAConfig {
   static void run(sycl::queue& queue, const chunk_prefill_args_t& args) {
     constexpr bool VarLen = true;
     constexpr bool Paged = true;
+    constexpr bool Causal_ = false;
+    constexpr bool Local_ = false;
+    constexpr bool Sink_ = false;
     cutlass::KernelHardwareInfo hw_info;
 
     using ProblemShapeType = cutlass::fmha::kernel::FMHAProblemShape<VarLen>;
@@ -270,8 +273,8 @@ struct FMHAConfig {
     using MainloopDispatchPolicy = cutlass::fmha::XeDefault<PipelineStages>;
     using CollectiveMainloop = cutlass::fmha::collective::FMHAFwdMainloop<
         MainloopDispatchPolicy,
-        Causal,
-        Local,
+        Causal_,
+        Local_,
         Paged,
         TiledMMAQK,
         TiledMMAPV,
@@ -285,7 +288,7 @@ struct FMHAConfig {
 
     // Epilogue
     using CollectiveEpilogue = cutlass::fmha::collective::FMHAFwdEpilogue<
-        Sink,
+        Sink_,
         CollectiveMainloop,
         TileShapeOutput,
         TensorO,
@@ -448,13 +451,13 @@ void cutlass_chunk_prefill_impl(
           std::to_string(max_head_size));
 
   if (args.head_size == HEAD_SIZE_LIMIT_0) {
-    policy_dispatch<chunk_policy_head64>(queue, cuType, args);
+    // policy_dispatch<chunk_policy_head64>(queue, cuType, args);
   } else if (args.head_size == HEAD_SIZE_LIMIT_1) {
     policy_dispatch<chunk_policy_head128>(queue, cuType, args);
   } else if (args.head_size == HEAD_SIZE_LIMIT_2) {
-    policy_dispatch<chunk_policy_head192>(queue, cuType, args);
+    // policy_dispatch<chunk_policy_head192>(queue, cuType, args);
   } else if (args.head_size == HEAD_SIZE_LIMIT_3) {
-    policy_dispatch<chunk_policy_head256>(queue, cuType, args);
+    // policy_dispatch<chunk_policy_head256>(queue, cuType, args);
   } else {
     TORCH_CHECK(false, "Unsupported head size for fmha");
   }
