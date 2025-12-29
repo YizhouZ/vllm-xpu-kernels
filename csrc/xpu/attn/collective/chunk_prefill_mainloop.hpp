@@ -376,39 +376,6 @@ struct FMHAFwdMainloop<
     auto tQsQ_store = thr_store_q_smem.partition_D(sQ);
     auto tQsQ_load = thr_load_q_smem.partition_S(sQ);
 
-    if (cute::thread(0, 0)) {
-      print("sQ: ");
-      print(sQ);
-      print("\n");
-      print("tQsQ_store: ");
-      print(tQsQ_store);
-      print("\n");
-      print("tQsQ_load: ");
-      print(tQsQ_load);
-      print("\n");
-      print("tQrQ: ");
-      print(tQrQ);
-      print("\n");
-      print("tSrQ: ");
-      print(tSrQ);
-      print("\n");
-      print("tQgQ: ");
-      print(tQgQ);
-      print("\n");
-      print("thr_store_q_smem: ");
-      print(thr_store_q_smem);
-      print("\n");
-      print("store_q_smem: ");
-      print(store_q_smem);
-      print("\n");
-      print("copy_q: ");
-      print(copy_q);
-      print("\n");
-      print("thr_copy_q: ");
-      print(thr_copy_q);
-      print("\n");
-    }
-
     // ------
     // Kernel
     // ------
@@ -426,9 +393,17 @@ struct FMHAFwdMainloop<
 
     /* Initialization steps for first block: Q/K prefetch, O init */
     /* TODO: limit D prefetch for large head size, and reorder K prefetches */
-    for (int D = 0; D < size<3>(pQgQ); D++) {
-      prefetch(prefetch_q, pQgQ(_, _, _, D));
+    // for (int D = 0; D < size<3>(pQgQ); D++) {
+    //   prefetch(prefetch_q, pQgQ(_, _, _, D));
+    // }
+    CUTLASS_PRAGMA_UNROLL
+    for (int D = 0; D < VTiles; ++D) {
+      copy(copy_q, tQgQ(_, _, _, D), tQrQ);
+      reorder(tQrQ, tSrQ);
+      auto store_tSrQ = thr_store_q_smem.retile_S(tSrQ);
+      copy(store_q_smem, store_tSrQ, tQsQ_store(_, _, _, D));
     }
+    barrier();
 
     for (int D = 0; D < size<4>(pKgK); D++) {
       prefetch(prefetch_k, pKgK(_, _, _, page_idx, D));
@@ -453,38 +428,25 @@ struct FMHAFwdMainloop<
 
       /* GEMM 1: S = K * Q */
       clear(tSrS); /* TODO: fuse w/ initial gemm call */
-      for (int D = 0; D < size<4>(tKgK); D++) {
-        copy(copy_q, tQgQ(_, _, _, D), tQrQ);
+      CUTLASS_PRAGMA_UNROLL
+      for (int D = 0; D < VTiles; D++) {
+        // copy(copy_q, tQgQ(_, _, _, D), tQrQ);
         copy(copy_k, tKgK_cache(_, _, _, D), tKrK);
 
-        reorder(tQrQ, tSrQ);
+        // reorder(tQrQ, tSrQ);
         reorder(tKrK, tSrK);
 
-        // /* reg -> smem */
-        auto store_tSrQ = thr_store_q_smem.retile_S(tSrQ);
-        copy(store_q_smem, store_tSrQ, tQsQ_store(_, _, _, D));
-        barrier();
-        if (cute::thread(0, 0)) {
-          print_tensor(tSrQ);
-          print_tensor(tQsQ_store(_, _, _, D));
-          print("store_tSrQ: ");
-          print(store_tSrQ);
-          print("\n");
-          print("tQsQ_store: ");
-          print(tQsQ_store);
-          print("\n");
-        }
         /* smem -> reg */
-        // clear(tSrQ);
-        // auto load_tSrQ = thr_load_q_smem.retile_D(tSrQ);
-        // copy(load_q_smem, tQsQ_load(_, _, D), load_tSrQ);
+        auto load_tSrQ = thr_load_q_smem.retile_D(tSrQ);
+        copy(load_q_smem, tQsQ_load(_, _, _, D), load_tSrQ);
         // barrier();
-        // if (cute::thread(0, 0)) {
+        // if (cute::thread(0, 0) && D == 0 && K == blk_k0) {
         //   print_tensor(tSrQ);
         // }
 
         cute::gemm(mma_qk, tSrQ, tSrK, tSrS);
       }
+      // barrier();
 
       /* V prefetch for GEMM 2 */
       prefetch(prefetch_v, pVgV(_, _, _, page_idx));
