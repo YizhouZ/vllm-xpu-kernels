@@ -378,6 +378,10 @@ struct FMHAFwdMainloop<
         cute::gemm(mma_qk, tSrQ, tSrK, tSrS);
       }
 
+      // for (int i = 0; i < tArA.size(); i++) {
+      //   tArA(i) += tSrS(i);
+      // }
+
       /* V prefetch for GEMM 2 */
       prefetch(prefetch_v, pVgV(_, _, _, page_idx));
 
@@ -436,7 +440,7 @@ struct FMHAFwdMainloop<
       reorder(tSrS, tArP);
 
       /* GEMM 2: A += P * V, split in v dimension */
-      CUTLASS_PRAGMA_UNROLL
+      // CUTLASS_PRAGMA_UNROLL
       for (int VV = 0; VV < VTiles; VV++) {
         copy(copy_v, tVgV_cache(_, _, _, VV), tVrV);
         reorder(tVrV, tArV);

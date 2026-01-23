@@ -5,17 +5,16 @@ function(fmha_forward_configure FILENAME_SUFFIX)
   set(BOOL_FLAG_false "f")
   set(BOOL_FLAG_true "t")
   set(policy_list
-      "chunk_policy_head64" "chunk_policy_head96" "chunk_policy_head128"
-      "chunk_policy_head192" "chunk_policy_head256")
+      "chunk_policy_head128")
 
   set(IMPL_KV_T "fp16")
 
   foreach(IMPL_POLICY ${policy_list})
     # foreach(IMPL_T ${L_TYPES})
-    foreach(IMPL_KISPAGED ${L_BOOLS})
-      foreach(IMPL_KISCAUSAL ${L_BOOLS})
-        foreach(IMPL_KISLOCAL ${L_BOOLS})
-          foreach(IMPL_KISSINK ${L_BOOLS})
+    foreach(IMPL_KISPAGED "true")
+      foreach(IMPL_KISCAUSAL "false")
+        foreach(IMPL_KISLOCAL "false")
+          foreach(IMPL_KISSINK "false")
             set(FILE_SUFFIX "${IMPL_POLICY}_")
             set(FILE_SUFFIX "${FILE_SUFFIX}${BOOL_FLAG_${IMPL_KISPAGED}}")
             set(FILE_SUFFIX "${FILE_SUFFIX}${BOOL_FLAG_${IMPL_KISCAUSAL}}")
