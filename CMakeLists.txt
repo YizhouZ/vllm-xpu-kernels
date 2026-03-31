@@ -224,7 +224,7 @@ if(VLLM_GPU_LANG STREQUAL "SYCL")
   # Set CUTLASS_REVISION. Used for FetchContent. Also fixes some bogus messages
   # when building.
   set(CUTLASS_REVISION
-      "3f2a337e885db0fb97b2a6ba514eb7a2a734ac4a"
+      "cd763790ad2f74d7294435ecf77682bac0062c3a"
       CACHE STRING "CUTLASS revision to use")
 
   if(DEFINED ENV{VLLM_CUTLASS_SRC_DIR})
@@ -306,6 +306,7 @@ if(BUILD_SYCL_TLA_KERNELS)
 
   set(SYCL_TLA_KERNELS_COMPILE_FLAGS ${VLLM_GPU_COMPILE_FLAGS})
   list(APPEND SYCL_TLA_KERNELS_COMPILE_FLAGS ${VLLM_CUTLASS_FLAGS})
+  list(APPEND SYCL_TLA_KERNELS_COMPILE_FLAGS "-fno-sycl-instrument-device-code")
 
   # compile static library for attn and grouped_gemm, link this library to vLLM
   # extensions shared library
