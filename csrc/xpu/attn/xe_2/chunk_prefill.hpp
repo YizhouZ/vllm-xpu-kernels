@@ -53,6 +53,9 @@ struct chunk_prefill_args_t {
   bool is_causal = false;
   bool is_local = false;
   bool is_sink = false;
+  // softmax_lse output (nullptr when not requested)
+  float* softmax_lse = nullptr;
+  int lse_stride = 0;  // stride along seq dim (= num_heads_q)
 };
 
 template <class FMHAKernel, bool isVarLen>
@@ -145,7 +148,9 @@ struct KernelLauncher {
          stride_V,
          reinterpret_cast<ElementO*>(args.out),
          stride_O,
-         reinterpret_cast<ElementQ*>(args.sm_sink)},
+         reinterpret_cast<ElementQ*>(args.sm_sink),
+         args.softmax_lse,
+         args.lse_stride},
         {args.sm_scale,
          args.k_scale,
          args.v_scale,

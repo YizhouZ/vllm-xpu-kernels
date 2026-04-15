@@ -144,6 +144,10 @@ class XeFMHAFwdKernel {
 
     // softmax sink
     const ElementSink* ptr_S;
+
+    // softmax_lse output [total_seqlen_q, num_heads_q] (nullptr if disabled)
+    float* softmax_lse;
+    int lse_stride;  // = num_heads_q
   };
   using KernelParams = KernelArguments;
 
@@ -355,6 +359,43 @@ class XeFMHAFwdKernel {
           thr_id,
           seq_len,
           full_tile_offset);
+
+      // Write softmax_lse before epilogue (only from first V-tile,
+      // lane 0 of each subgroup to avoid redundant stores).
+      // ReduceK == 1 guarantees tA_max/tA_sum are final after mainloop.
+      static_assert(
+          size<3>(typename TiledMMAPV::ThrLayoutVMNK{}) == 1,
+          "softmax_lse requires ReduceK == 1 in TiledMMAPV");
+      if (p.softmax_lse != nullptr && get<1>(blk_qv) == 0 &&
+          (thr_id % intel::sg_size == 0)) {
+        using ElementA = typename FragA::value_type;
+        constexpr float kLn2 = 0.6931471805599453f;
+        int q_tile_start = blk_q * get<0>(TileShapeQK{});
+        int qo_cumul = 0;
+        if constexpr (is_var_len) {
+          qo_cumul = s.seq_len_qo.cumulative_length[idx_b];
+        }
+
+        CUTLASS_PRAGMA_UNROLL
+        for (int i = 0; i < tA_sum.size(); i++) {
+          int q_in_batch = q_tile_start + q_offset_sg + i;
+          if (q_in_batch < seq_len_qo) {
+            ElementA sum_val = tA_sum(i);
+            // Include sink contribution for LSE computation
+            if constexpr (Sink) {
+              constexpr double kLog2e = 1.4426950408889634074;
+              ElementSink s_head = p.ptr_S[head_q];
+              sum_val += sycl::native::exp2(
+                  static_cast<ElementA>(s_head * kLog2e) - tA_max(i));
+            }
+            float lse = static_cast<float>(tA_max(i)) * kLn2 +
+                         sycl::log(static_cast<float>(sum_val));
+            int global_q = qo_cumul + q_in_batch;
+            p.softmax_lse[global_q * p.lse_stride + head_q] = lse;
+          }
+        }
+      }
+
       if constexpr (
           !is_empty_v<MainloopSharedStorage> &&
           !is_empty_v<EpilogueSharedStorage>) {
