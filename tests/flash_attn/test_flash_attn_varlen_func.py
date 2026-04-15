@@ -86,7 +86,7 @@ def ref_paged_attn(query: torch.Tensor,
         if is_fp8kv:
             k = (k.to(torch.float32) * k_descale).to(dtype)
             v = (v.to(torch.float32) * v_descale).to(dtype)
-        attn = torch.einsum("qhd,khd->hqk", q, k)
+        attn = torch.einsum("qhd,khd->hqk", q, k).float()
         empty_mask = torch.ones(query_len, kv_len)
         mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
         if window_size_right > 0 or window_size_left > 0:
@@ -112,7 +112,7 @@ def ref_paged_attn(query: torch.Tensor,
                                       1).expand(attn.size()[0],
                                                 attn.size()[1], 1)
             attn = torch.cat([attn, sink_expanded], dim=-1)
-        attn = torch.softmax(attn, dim=-1)
+        attn = torch.softmax(attn, dim=-1).to(v.dtype)
         if sink is not None:
             attn = attn[..., :-1]
         out = torch.einsum("hqk,khd->qhd", attn, v)
@@ -165,9 +165,6 @@ MINI_PYTEST_PARAMS = {
 @pytest.mark.parametrize("is_casual", CASUAL)
 @pytest.mark.parametrize("is_paged", PAGED)
 @pytest.mark.parametrize("fp8_dtype", FP8KV, ids=format_tc)
-# stride_pad: padding added to head_size to create non-contiguous Q/K/V.
-# Must be a multiple of 32 (64-byte alignment / 2 bytes per bf16 element)
-# since the Xe2 2D block load requires 64-byte aligned base pointers.
 @pytest.mark.parametrize("stride_pad", [0, 32])
 @torch.inference_mode()
 def test_varlen_with_paged_kv(
@@ -207,7 +204,7 @@ def test_varlen_with_paged_kv(
     # if q_dtype is not None and (dtype != torch.bfloat16 or fa_version == 2):
     #     pytest.skip("Flash attention with quantized inputs is only "
     #                 "supported on version 3 with bfloat16 base type")
-    torch.manual_seed(42)
+    torch.manual_seed(4242)
     num_seqs = len(seq_lens)
     query_lens = [x[0] for x in seq_lens]
     kv_lens = [x[1] for x in seq_lens]
@@ -222,8 +219,6 @@ def test_varlen_with_paged_kv(
                         num_query_heads,
                         head_size,
                         dtype=dtype)
-    # Create non-contiguous Q by allocating with padded head_size
-    # and slicing back to original head_size.
     if stride_pad > 0:
         padded_head = head_size + stride_pad
         query_padded = torch.randn(sum(query_lens),
