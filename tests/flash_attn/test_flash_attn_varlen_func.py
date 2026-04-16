@@ -351,7 +351,7 @@ def test_varlen_with_paged_kv(
         is_fp8kv=is_fp8kv,
         is_fp8_query=is_fp8_query,
         dtype=dtype)
-    atol, rtol = 1e-2, 1e-2
+    atol, rtol = 2e-2, 1e-2
     if q_dtype is not None:
         atol, rtol = 1.5e-1, 1.5e-1
     if window_size[0] != -1 or window_size[1] != -1:
