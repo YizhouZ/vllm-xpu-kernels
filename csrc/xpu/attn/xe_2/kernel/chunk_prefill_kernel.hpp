@@ -362,7 +362,6 @@ class XeFMHAFwdKernel {
 
       // Write softmax_lse before epilogue (only from first V-tile,
       // lane 0 of each subgroup to avoid redundant stores).
-      // ReduceK == 1 guarantees tA_max/tA_sum are final after mainloop.
       static_assert(
           size<3>(typename TiledMMAPV::ThrLayoutVMNK{}) == 1,
           "softmax_lse requires ReduceK == 1 in TiledMMAPV");
