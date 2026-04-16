@@ -153,6 +153,7 @@ void cutlass_chunk_prefill_impl(
   if (softmax_lse.has_value()) {
     args.softmax_lse = softmax_lse.value().data_ptr<float>();
     args.lse_stride = num_heads_q;
+  }
   // Extract Q, K, V, O strides from tensors
   if (is_varlen) {
     // Q/O: [total_seq, num_heads, head_size]
