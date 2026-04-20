@@ -12,25 +12,25 @@
 // to be 64-byte aligned. For the flash-attention tensors here that is
 // the last dim (head_size), so we only need to check
 // size(last_dim) * element_size % 64 == 0.
-#define CHECK_STRIDE_ALIGNMENT(x)                                            \
-  do {                                                                       \
-    const int _nd = (x).dim();                                               \
-    const int _es = (x).element_size();                                      \
-    const auto _last = (x).size(_nd - 1);                                    \
-    TORCH_CHECK(                                                             \
-        (x).stride(_nd - 1) == 1,                                            \
-        #x " expects the last dim to be contiguous (stride==1), got ",      \
-        (x).stride(_nd - 1));                                                \
-    TORCH_CHECK(                                                             \
-        _last * _es % 64 == 0,                                               \
-        #x " last dim size=",                                                \
-        _last,                                                               \
-        " (",                                                                \
-        _last * _es,                                                         \
-        " bytes) is not 64-byte aligned (element_size=",                     \
-        _es,                                                                 \
-        "). Xe2 2D block requires the contiguous dim to be 64-byte "        \
-        "aligned.");                                                         \
+#define CHECK_STRIDE_ALIGNMENT(x)                                      \
+  do {                                                                 \
+    const int _nd = (x).dim();                                         \
+    const int _es = (x).element_size();                                \
+    const auto _last = (x).size(_nd - 1);                              \
+    TORCH_CHECK(                                                       \
+        (x).stride(_nd - 1) == 1,                                      \
+        #x " expects the last dim to be contiguous (stride==1), got ", \
+        (x).stride(_nd - 1));                                          \
+    TORCH_CHECK(                                                       \
+        _last * _es % 64 == 0,                                         \
+        #x " last dim size=",                                          \
+        _last,                                                         \
+        " (",                                                          \
+        _last * _es,                                                   \
+        " bytes) is not 64-byte aligned (element_size=",               \
+        _es,                                                           \
+        "). Xe2 2D block requires the contiguous dim to be 64-byte "   \
+        "aligned.");                                                   \
   } while (0)
 
 namespace vllm {
