@@ -9,27 +9,26 @@
 #define CHECK_CONTIGUOUS(x) \
   TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
 // Xe2 2D block load/store requires the contiguous (stride==1) dimension
-// to be 64-byte aligned. For the flash-attention tensors here that is
+// to be 16-byte aligned. For the flash-attention tensors here that is
 // the last dim (head_size), so we only need to check
-// size(last_dim) * element_size % 64 == 0.
+// size(-1) * element_size % 16 == 0.
 #define CHECK_STRIDE_ALIGNMENT(x)                                      \
   do {                                                                 \
-    const int _nd = (x).dim();                                         \
     const int _es = (x).element_size();                                \
-    const auto _last = (x).size(_nd - 1);                              \
+    const auto _last = (x).size(-1);                                   \
     TORCH_CHECK(                                                       \
-        (x).stride(_nd - 1) == 1,                                      \
+        (x).stride(-1) == 1,                                           \
         #x " expects the last dim to be contiguous (stride==1), got ", \
-        (x).stride(_nd - 1));                                          \
+        (x).stride(-1));                                               \
     TORCH_CHECK(                                                       \
-        _last * _es % 64 == 0,                                         \
+        _last * _es % 16 == 0,                                         \
         #x " last dim size=",                                          \
         _last,                                                         \
         " (",                                                          \
         _last * _es,                                                   \
-        " bytes) is not 64-byte aligned (element_size=",               \
+        " bytes) is not 16-byte aligned (element_size=",               \
         _es,                                                           \
-        "). Xe2 2D block requires the contiguous dim to be 64-byte "   \
+        "). Xe2 2D block requires the contiguous dim to be 16-byte "   \
         "aligned.");                                                   \
   } while (0)
 
