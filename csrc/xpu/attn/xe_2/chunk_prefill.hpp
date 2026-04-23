@@ -5,7 +5,6 @@
 #include "flash_attention_v2/collective/fmha_fusion.hpp"
 #include "cutlass/util/packed_stride.hpp"
 #include "cutlass/util/GPU_Clock.hpp"
-#include "cutlass/util/sycl_event_manager.hpp"
 #include <cute/tensor.hpp>
 #include <random>
 
@@ -56,6 +55,7 @@ struct chunk_prefill_args_t {
   // softmax_lse output (nullptr when not requested)
   float* softmax_lse = nullptr;
   int lse_stride = 0;  // stride along seq dim (= num_heads_q)
+  bool is_interleaved_kv_cache = false;
   // Q/O strides in CUTLASS order: (seq, head_size=1, heads, batch)
   int q_stride_seq = 0;
   int q_stride_heads = 0;
@@ -180,7 +180,8 @@ struct KernelLauncher {
          args.max_blocks_per_seq,
          args.total_seqlen_k,
          args.window_size_left,
-         args.window_size_right},
+         args.window_size_right,
+         args.is_interleaved_kv_cache},
         {},
         hw_info};
 
@@ -223,11 +224,8 @@ struct KernelLauncher {
         syclex::sub_group_size<cute::intel::sg_size>, intelex::grf_size<256>};
     compat::experimental::launch_policy policy{
         sycl_grid, sycl_block, launch_props, kernel_props};
-    auto event =
-        compat::experimental::launch<cutlass::device_kernel<FMHAKernel>>(
-            policy, queue, params);
-
-    EventManager::getInstance().addEvent(event);
+    compat::experimental::launch<cutlass::device_kernel<FMHAKernel>>(
+        policy, queue, params);
   }
 };
 
