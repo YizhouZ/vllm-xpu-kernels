@@ -21,7 +21,7 @@ using namespace cute;
       static_cast<bool>(IMPL_KISCAUSAL),    \
       static_cast<bool>(IMPL_KISLOCAL),     \
       static_cast<bool>(IMPL_KISSINK),      \
-      static_cast<bool>(IMPL_KISLSE)>(\
+      static_cast<bool>(IMPL_KISLSE)>(      \
       sycl::queue & queue,                  \
       CutlassQKType& cuQKType,              \
       const chunk_prefill_args_t& args);

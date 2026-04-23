@@ -52,10 +52,10 @@ struct chunk_prefill_args_t {
   bool is_causal = false;
   bool is_local = false;
   bool is_sink = false;
+  bool is_interleaved_kv_cache = false;
   // softmax_lse output (nullptr when not requested)
   float* softmax_lse = nullptr;
   int lse_stride = 0;  // stride along seq dim (= num_heads_q)
-  bool is_interleaved_kv_cache = false;
   // Q/O strides in CUTLASS order: (seq, head_size=1, heads, batch)
   int q_stride_seq = 0;
   int q_stride_heads = 0;
