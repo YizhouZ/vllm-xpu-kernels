@@ -242,6 +242,7 @@ template <
     bool Causal = false,
     bool Local = false,
     bool Sink = false,
+    bool SoftmaxLSE = false,
     typename ElementQ = bfloat16_t,
     typename ElementK = bfloat16_t,
     typename ElementV = bfloat16_t,
@@ -329,7 +330,8 @@ struct FMHAConfig {
         ProblemShapeType,
         CollectiveMainloop,
         CollectiveEpilogue,
-        Scheduler>;
+        Scheduler,
+        SoftmaxLSE>;
 
     KernelLauncher<FMHAKernel, VarLen> launcher;
 
@@ -343,7 +345,13 @@ struct FMHAConfig {
   }
 };
 
-template <typename chunk_policy, bool Paged, bool Causal, bool Local, bool Sink>
+template <
+    typename chunk_policy,
+    bool Paged,
+    bool Causal,
+    bool Local,
+    bool Sink,
+    bool SoftmaxLSE>
 void policy_dispatch_impl(
     sycl::queue& queue,
     CutlassQKType& cuQKType,
@@ -362,6 +370,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           half_t,
           half_t,
           half_t,
@@ -378,6 +387,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           half_t,
           float_e4m3_t,
           float_e4m3_t,
@@ -394,6 +404,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           half_t,
           float_e5m2_t,
           float_e5m2_t,
@@ -412,6 +423,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           bfloat16_t,
           bfloat16_t,
           bfloat16_t,
@@ -428,6 +440,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           bfloat16_t,
           float_e4m3_t,
           float_e4m3_t,
@@ -444,6 +457,7 @@ void policy_dispatch_impl(
           Causal,
           Local,
           Sink,
+          SoftmaxLSE,
           bfloat16_t,
           float_e5m2_t,
           float_e5m2_t,
